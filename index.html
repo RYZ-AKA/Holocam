@@ -3,27 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JARVIS // HOLOGRAPHIC HUD</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
-    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <title>Advanced AR Viewfinder Hub</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 
     <style>
-        body {
-            background-color: #050507;
-            color: #ffffff;
-            font-family: 'Share Tech Mono', monospace;
-            overflow: hidden;
-            user-select: none;
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        /* Fullscreen Viewfinder Camera Background */
         #webcam {
             position: fixed;
             inset: 0;
@@ -31,195 +33,199 @@
             height: 100vh;
             object-fit: cover;
             transform: scaleX(-1); 
-            z-index: -10;
+            z-index: 1;
         }
-        .stark-panel {
-            background: rgba(9, 9, 11, 0.35);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(0, 229, 255, 0.2);
-            box-shadow: inset 0 0 15px rgba(0, 229, 255, 0.05);
-        }
-        .neon-glow {
-            text-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
-        }
-        .cyber-grid {
+
+        /* Transparent 3D Overlay Layer */
+        #canvas-container {
             position: fixed;
             inset: 0;
-            background-image: linear-gradient(rgba(0, 229, 255, 0.02) 1px, transparent 1px),
-                              linear-gradient(90deg, rgba(0, 229, 255, 0.02) 1px, transparent 1px);
-            background-size: 40px 40px;
+            width: 100vw;
+            height: 100vh;
+            z-index: 2;
+        }
+
+        /* UI Overlay Layer */
+        #ui-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 3;
             pointer-events: none;
-            z-index: -5;
+        }
+
+        /* Top Left Status Badge */
+        #status-badge {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: #ffffff;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(8px);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Center Camera Viewfinder Ring */
+        #center-reticle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 65px;
+            height: 65px;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            background-color: rgba(255, 255, 255, 0.15);
+            border-radius: 50%;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Sleek Movable Control Panel */
+        #control-panel {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            width: 170px;
+            background-color: rgba(0, 0, 0, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            backdrop-filter: blur(10px);
+            pointer-events: auto; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            user-select: none;
+        }
+
+        /* Drag Handle Header */
+        .panel-header {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            text-align: center;
+            padding-bottom: 6px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: grab;
+        }
+        
+        .panel-header:active {
+            cursor: grabbing;
+        }
+
+        .shape-btn {
+            background-color: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #ffffff;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 100%;
+            text-align: center;
+        }
+
+        .shape-btn:hover {
+            background-color: rgba(0, 245, 212, 0.2);
+            border-color: #00f5d4;
+            color: #00f5d4;
         }
     </style>
 </head>
-<body class="w-screen h-screen relative m-0 p-0">
+<body>
 
     <video id="webcam" autoplay playsinline></video>
-    <div class="cyber-grid"></div>
 
-    <div id="canvas-container" class="absolute inset-0 z-10"></div>
+    <div id="canvas-container"></div>
 
-    <header class="absolute top-0 inset-x-0 p-6 flex justify-between items-start z-20 pointer-events-none">
-        <div>
-            <h1 class="text-lg tracking-widest text-cyan-400 font-bold neon-glow flex items-center gap-2">
-                <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
-                MARK_XXVI // CORE ARRAYS
-            </h1>
-            <p class="text-[10px] text-white/40 tracking-wider mt-0.5 uppercase" id="system-status">SYS.FEED // STATUS IDLE</p>
-        </div>
+    <div id="ui-overlay">
+        <div id="status-badge">System Initializing...</div>
         
-        <div class="stark-panel p-3 rounded border-cyan-400/30 text-right min-w-[130px] pointer-events-auto">
-            <div class="text-[9px] text-white/40 uppercase tracking-widest">Target Core</div>
-            <div class="text-base font-bold text-white tracking-wide" id="ui-hand-count">00 NODES</div>
-            <div class="text-[9px] text-cyan-400/60 mt-1 flex justify-between font-mono">
-                <span>INDEX FPS:</span>
-                <span id="ui-fps" class="font-bold">00</span>
-            </div>
-        </div>
-    </header>
+        <div id="center-reticle"></div>
 
-    <div id="control-hub" class="absolute z-30 stark-panel p-4 rounded-lg w-56 flex flex-col gap-3" style="top: 25%; left: 5%;">
-        <div class="flex items-center justify-between border-b border-cyan-400/20 pb-1.5 cursor-grab active:cursor-grabbing">
-            <span class="text-[10px] font-bold tracking-widest text-cyan-400 neon-glow">GEOMETRY FIELD</span>
-            <span class="w-1 h-1 rounded-full bg-cyan-400"></span>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-            <button onclick="changeObjectGeometry('cube')" class="border border-cyan-400/30 bg-black/20 py-2 rounded text-xs text-white/80 hover:text-cyan-300 hover:border-cyan-400 transition-all duration-300">
-                [ ▢ CUBE ]
-            </button>
-            <button onclick="changeObjectGeometry('sphere')" class="border border-cyan-400/30 bg-black/20 py-2 rounded text-xs text-white/80 hover:text-cyan-300 hover:border-cyan-400 transition-all duration-300">
-                [ ○ SPHERE ]
-            </button>
-        </div>
-    </div>
-
-    <div id="loader-shield" class="absolute inset-0 z-50 bg-[#050507]/95 flex flex-col items-center justify-center transition-opacity duration-500">
-        <div class="p-6 border border-cyan-400/20 rounded-md text-center max-w-xs stark-panel">
-            <h2 class="text-sm tracking-widest text-white font-bold mb-2 uppercase">INTERFACE SYNC 2.6</h2>
-            <p class="text-[11px] text-white/50 mb-4 leading-relaxed">Map spatial device telemetry to screen matrix overlay.</p>
-            <button onclick="activateHologramSystem()" class="w-full border border-cyan-400 py-2 rounded text-xs text-cyan-400 font-bold uppercase tracking-widest hover:bg-cyan-400/10 transition-all duration-300">
-                Connect Interface
-            </button>
+        <div id="control-panel">
+            <div class="panel-header" id="panel-drag-handle">:: SHAPE MATRIX</div>
+            <button class="shape-btn" onclick="switchGeometry('cube')">Box Mesh</button>
+            <button class="shape-btn" onclick="switchGeometry('sphere')">Sphere Mesh</button>
+            <button class="shape-btn" onclick="switchGeometry('torus')">Torus Ring</button>
         </div>
     </div>
 
     <script>
         let scene, camera, renderer, controls, activeMesh;
-        let particleSystem, particleGeometry;
-        const TOTAL_PARTICLES = 600;
-        
-        let structuralIntegrity = 1.0;
-        let isBlownOut = false;
-        
-        let fpsCounter = 0, lastTimestamp = performance.now(), currentFps = 0;
-        let isPanelLocked = false;
-        let panelCoordinates = { x: window.innerWidth * 0.05, y: window.innerHeight * 0.25 };
+        let currentShapeType = 'cube';
+        const videoElement = document.getElementById('webcam');
+        const statusBadge = document.getElementById('status-badge');
 
-        function initCoreScene() {
-            const viewport = document.getElementById('canvas-container');
-            
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
             scene = new THREE.Scene();
 
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
             camera.position.set(0, 0, 7);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); 
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.setClearColor(0x000000, 0); 
-            viewport.appendChild(renderer.domElement);
+            container.appendChild(renderer.domElement);
 
-            // OrbitControls Subsystem Activation
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
-            controls.minDistance = 3;
-            controls.maxDistance = 12;
 
-            const ambient = new THREE.AmbientLight(0xffffff, 0.4);
-            scene.add(ambient);
+            switchGeometry('cube');
 
-            const cyanGlowPoint = new THREE.PointLight(0x00e5ff, 2.5, 12);
-            cyanGlowPoint.position.set(0, 2, 3);
-            scene.add(cyanGlowPoint);
-
-            buildTargetGeometry('cube');
-            window.addEventListener('resize', handleViewportResize);
-            setupMouseDragBackup();
+            window.addEventListener('resize', onWindowResize);
+            setupPanelDragging();
         }
 
-        function buildTargetGeometry(shape) {
+        function switchGeometry(type) {
+            currentShapeType = type;
             if (activeMesh) scene.remove(activeMesh);
-            if (particleSystem) scene.remove(particleSystem);
 
-            let geo;
-            if (shape === 'cube') {
-                geo = new THREE.BoxGeometry(1.2, 1.2, 1.2, 10, 10, 10);
-            } else {
-                geo = new THREE.SphereGeometry(0.8, 24, 24);
+            let geometry;
+            if (type === 'cube') {
+                geometry = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+            } else if (type === 'sphere') {
+                geometry = new THREE.SphereGeometry(0.8, 16, 16);
+            } else if (type === 'torus') {
+                geometry = new THREE.TorusGeometry(0.6, 0.2, 8, 24);
             }
 
-            const mat = new THREE.MeshBasicMaterial({
-                color: 0x00e5ff,
+            const material = new THREE.MeshBasicMaterial({
+                color: 0x00f5d4, 
                 wireframe: true,
                 transparent: true,
-                opacity: 0.75
+                opacity: 0.9
             });
 
-            activeMesh = new THREE.Mesh(geo, mat);
+            activeMesh = new THREE.Mesh(geometry, material);
             scene.add(activeMesh);
-
-            const pointsData = [];
-            const homeData = [];
-            const speedData = [];
-            const posAttr = geo.attributes.position;
-
-            for (let i = 0; i < TOTAL_PARTICLES; i++) {
-                let x = posAttr.getX(i % posAttr.count);
-                let y = posAttr.getY(i % posAttr.count);
-                let z = posAttr.getZ(i % posAttr.count);
-
-                pointsData.push(x, y, z);
-                homeData.push(x, y, z);
-
-                let drift = new THREE.Vector3(
-                    (Math.random() - 0.5) * 2, 
-                    (Math.random() - 0.5) * 2, 
-                    (Math.random() - 0.5) * 2
-                ).normalize().multiplyScalar(0.05 + Math.random() * 0.05);
-                speedData.push(drift.x, drift.y, drift.z);
-            }
-
-            particleGeometry = new THREE.BufferGeometry();
-            particleGeometry.setAttribute('position', new THREE.Float32BufferAttribute(pointsData, 3));
-            particleGeometry.setAttribute('homePos', new THREE.Float32BufferAttribute(homeData, 3));
-            particleGeometry.setAttribute('driftSpeed', new THREE.Float32BufferAttribute(speedData, 3));
-
-            const partMat = new THREE.PointsMaterial({
-                color: 0x00e5ff,
-                size: 0.035,
-                transparent: true,
-                blending: THREE.AdditiveBlending
-            });
-
-            particleSystem = new THREE.Points(particleGeometry, partMat);
-            scene.add(particleSystem);
         }
 
-        function changeObjectGeometry(shape) {
-            gsap.to(activeMesh.scale, {
-                x: 0, y: 0, z: 0, duration: 0.2, onComplete: () => {
-                    buildTargetGeometry(shape);
-                    activeMesh.scale.set(0, 0, 0);
-                    gsap.to(activeMesh.scale, { x: 1, y: 1, z: 1, duration: 0.3 });
-                }
-            });
+        // Mathematical conversion from MediaPipe coordinate space to full screen 3D vector space
+        function calculateWorldPos(normalizedX, normalizedY) {
+            const ndcX = (1 - normalizedX) * 2 - 1;
+            const ndcY = -(normalizedY * 2 - 1);
+
+            const targetVector = new THREE.Vector3(ndcX, ndcY, 0.5);
+            targetVector.unproject(camera);
+            const direction = targetVector.sub(camera.position).normalize();
+            const distance = -camera.position.z / direction.z;
+            return camera.position.clone().add(direction.multiplyScalar(distance));
         }
 
-        function initTrackingPipeline() {
-            const video = document.getElementById('webcam');
+        function initTracking() {
             const hands = new Hands({
                 locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
             });
@@ -227,200 +233,126 @@
             hands.setOptions({
                 maxNumHands: 2,
                 modelComplexity: 1,
-                minDetectionConfidence: 0.65,
-                minTrackingConfidence: 0.65
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
             });
 
-            hands.onResults((payload) => {
-                const nodes = payload.multiHandLandmarks || [];
-                document.getElementById('ui-hand-count').innerText = `${nodes.length.toString().padStart(2, '0')} ${nodes.length === 1 ? 'NODE' : 'NODES'}`;
+            hands.onResults((results) => {
+                const trackedHands = results.multiHandLandmarks || [];
 
-                if (nodes.length > 0) {
-                    // Turn off OrbitControls temporary so hand movement doesn't conflict with screen dragging
-                    controls.enabled = false;
+                if (trackedHands.length > 0) {
+                    controls.enabled = false; // Disable OrbitControls during hand manipulation
 
-                    const primaryHand = nodes[0];
-                    const label = payload.multiHandedness[0].label;
-
-                    const thumb = primaryHand[4];
-                    const index = primaryHand[8];
-                    
-                    const pinchGap = Math.hypot(thumb.x - index.x, thumb.y - index.y, thumb.z - index.z);
-                    const isPinching = pinchGap < 0.055;
-
-                    const ndcX = (1 - primaryHand[9].x) * 2 - 1;
-                    const ndcY = -(primaryHand[9].y * 2 - 1);
-
-                    // Math Translation to match 3D space with hand location
-                    const spatialVector = new THREE.Vector3(ndcX, ndcY, 0.5);
-                    spatialVector.unproject(camera);
-                    const cameraDirection = spatialVector.sub(camera.position).normalize();
-                    const distanceZ = -camera.position.z / cameraDirection.z;
-                    const computedWorldPos = camera.position.clone().add(cameraDirection.multiplyScalar(distanceZ));
-
-                    // Air-dragging control layout logic
-                    const pixelX = (1 - thumb.x) * window.innerWidth;
-                    const pixelY = thumb.y * window.innerHeight;
-                    const hubElement = document.getElementById('control-hub');
-                    const bounds = hubElement.getBoundingClientRect();
-
-                    if (isPinching && pixelX >= bounds.left - 40 && pixelX <= bounds.right + 40 && pixelY >= bounds.top - 40 && pixelY <= bounds.bottom + 40) {
-                        isPanelLocked = true;
-                    } else if (!isPinching) {
-                        isPanelLocked = false;
-                    }
-
-                    if (isPanelLocked) {
-                        document.getElementById('system-status').innerText = "SYS.FEED // LAYOUT OVERRIDE";
-                        panelCoordinates.x = pixelX - (hubElement.offsetWidth / 2);
-                        panelCoordinates.y = pixelY - (hubElement.offsetHeight / 2);
-                        gsap.set(hubElement, { left: panelCoordinates.x, top: panelCoordinates.y });
-                        return;
-                    }
-
-                    // Two-Hand Scaling Matrix
-                    if (nodes.length === 2) {
-                        document.getElementById('system-status').innerText = "SYS.FEED // VOLUMETRIC SCALING";
-                        const secondaryHand = nodes[1];
-                        const gapBetweenWrists = Math.hypot(primaryHand[0].x - secondaryHand[0].x, primaryHand[0].y - secondaryHand[0].y);
-                        const finalScale = THREE.MathUtils.clamp(gapBetweenWrists * 3.5, 0.3, 3.0);
-                        gsap.to(activeMesh.scale, { x: finalScale, y: finalScale, z: finalScale, duration: 0.1 });
-                        gsap.to(particleSystem.scale, { x: finalScale, y: finalScale, z: finalScale, duration: 0.1 });
-                        return;
-                    }
-
-                    // Finger Open/Close detection calculations
-                    let extensionsSum = 0;
-                    [8, 12, 16, 20].forEach(tip => {
-                        extensionsSum += Math.hypot(primaryHand[tip].x - primaryHand[0].x, primaryHand[tip].y - primaryHand[0].y);
-                    });
-                    
-                    if (extensionsSum > 1.65 && !isBlownOut) {
-                        document.getElementById('system-status').innerText = "SYS.FEED // MOLECULAR BURST";
-                        gsap.to(activeMesh.material, { opacity: 0, duration: 0.2 });
-                        gsap.to(window, { structuralIntegrity: 0, duration: 0.6, onComplete: () => { isBlownOut = true; } });
-                    } else if (extensionsSum < 0.85 && isBlownOut) {
-                        document.getElementById('system-status').innerText = "SYS.FEED // RECONSTRUCTING CORE";
-                        gsap.to(activeMesh.material, { opacity: 0.75, duration: 0.5 });
-                        gsap.to(window, { structuralIntegrity: 1, duration: 0.7, onComplete: () => { isBlownOut = false; } });
-                    }
-
-                    // Object movement handling
-                    if (!isBlownOut) {
-                        document.getElementById('system-status').innerText = isPinching ? "SYS.FEED // ANCHOR LOCKED" : "SYS.FEED // TRACKING ORIENTATION";
+                    if (trackedHands.length === 1) {
+                        statusBadge.innerText = "1 Hand: Position & 3D Rotation Locked";
                         
-                        if (isPinching && label === "Right") {
-                            activeMesh.position.lerp(computedWorldPos, 0.2);
-                        } else if (!isPinching) {
-                            // Float smoothly close to the center target if hand is open
-                            activeMesh.position.lerp(new THREE.Vector3(computedWorldPos.x * 0.4, computedWorldPos.y * 0.4, 0), 0.08);
-                        }
+                        const hand = trackedHands[0];
                         
-                        const deltaX = primaryHand[17].x - primaryHand[5].x;
-                        const deltaY = primaryHand[17].y - primaryHand[5].y;
-                        const targetAngle = Math.atan2(deltaY, deltaX);
-                        
-                        activeMesh.rotation.z = THREE.MathUtils.lerp(activeMesh.rotation.z, targetAngle, 0.1);
-                        activeMesh.rotation.y = THREE.MathUtils.lerp(activeMesh.rotation.y, (primaryHand[9].x - 0.5) * 3, 0.1);
+                        // Center Anchor Tracking Point Calculation
+                        const centerX = (hand[0].x + hand[5].x + hand[17].x) / 3;
+                        const centerY = (hand[0].y + hand[5].y + hand[17].y) / 3;
+                        const worldPos = calculateWorldPos(centerX, centerY);
+                        activeMesh.position.lerp(worldPos, 0.25);
 
-                        particleSystem.position.copy(activeMesh.position);
-                        particleSystem.rotation.copy(activeMesh.rotation);
+                        // Complete 3D Orientation Mapping Rules
+                        const rollAngle = Math.atan2(hand[17].y - hand[5].y, hand[17].x - hand[5].x);
+                        const yawAngle = (hand[9].x - hand[0].x) * 2.5;
+                        const pitchAngle = (hand[9].y - hand[0].y) * 2.5;
+
+                        activeMesh.rotation.z = THREE.MathUtils.lerp(activeMesh.rotation.z, rollAngle, 0.15);
+                        activeMesh.rotation.y = THREE.MathUtils.lerp(activeMesh.rotation.y, yawAngle, 0.15);
+                        activeMesh.rotation.x = THREE.MathUtils.lerp(activeMesh.rotation.x, pitchAngle, 0.15);
+
+                    } else if (trackedHands.length === 2) {
+                        statusBadge.innerText = "2 Hands: Resizing Width / Height / Length";
+
+                        const hand1 = trackedHands[0];
+                        const hand2 = trackedHands[1];
+
+                        // Midpoint tracking for placement stability between both points
+                        const midX = (hand1[9].x + hand2[9].x) / 2;
+                        const midY = (hand1[9].y + hand2[9].y) / 2;
+                        const targetMidpoint = calculateWorldPos(midX, midY);
+                        activeMesh.position.lerp(targetMidpoint, 0.25);
+
+                        // Individual dimensional difference tracking calculation vectors
+                        const deltaWidth = Math.abs(hand1[9].x - hand2[9].x) * 4.5;
+                        const deltaHeight = Math.abs(hand1[9].y - hand2[9].y) * 4.5;
+                        const deltaLength = Math.abs(hand1[9].z - hand2[9].z) * 12 + 0.3; // Depth telemetry estimation
+
+                        // Apply independent dynamic scaling limitations safely
+                        activeMesh.scale.x = THREE.MathUtils.lerp(activeMesh.scale.x, THREE.MathUtils.clamp(deltaWidth, 0.2, 5.0), 0.2);
+                        activeMesh.scale.y = THREE.MathUtils.lerp(activeMesh.scale.y, THREE.MathUtils.clamp(deltaHeight, 0.2, 5.0), 0.2);
+                        activeMesh.scale.z = THREE.MathUtils.lerp(activeMesh.scale.z, THREE.MathUtils.clamp(deltaLength, 0.2, 5.0), 0.2);
                     }
                 } else {
-                    // Turn OrbitControls back on if hands leave the frame
+                    // Reset pipeline parameters and return environment state back to OrbitControls
                     controls.enabled = true;
-                    document.getElementById('system-status').innerText = "SYS.FEED // STATUS IDLE";
+                    statusBadge.innerText = "No hand detected";
+                    
+                    // Smoothly reset back to uniform scale defaults when hands leave frame
+                    activeMesh.scale.lerp(new THREE.Vector3(1, 1, 1), 0.05);
                 }
             });
 
-            const cameraDevice = new Camera(video, {
-                onFrame: async () => { await hands.send({ image: video }); },
+            const cameraDevice = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({ image: videoElement });
+                },
                 width: 640,
                 height: 480
             });
             cameraDevice.start();
         }
 
-        function engineLoop(timestamp) {
-            requestAnimationFrame(engineLoop);
-
-            fpsCounter++;
-            if (timestamp > lastTimestamp + 1000) {
-                currentFps = Math.round((fpsCounter * 1000) / (timestamp - lastTimestamp));
-                document.getElementById('ui-fps').innerText = currentFps;
-                fpsCounter = 0;
-                lastTimestamp = timestamp;
-            }
-
-            // Idle self rotation system
-            if (activeMesh && structuralIntegrity === 1.0 && document.getElementById('ui-hand-count').innerText.startsWith('00')) {
-                activeMesh.rotation.x += 0.005;
-                activeMesh.rotation.y += 0.003;
-                particleSystem.position.copy(activeMesh.position);
-                particleSystem.rotation.copy(activeMesh.rotation);
-            }
-
-            // Engine Particle Cloud update sequences
-            if (particleGeometry) {
-                const positions = particleGeometry.attributes.position.array;
-                const homes = particleGeometry.attributes.homePos.array;
-                const speeds = particleGeometry.attributes.driftSpeed.array;
-
-                for (let i = 0; i < TOTAL_PARTICLES; i++) {
-                    const index = i * 3;
-                    if (structuralIntegrity === 0) {
-                        positions[index] += speeds[index];
-                        positions[index+1] += speeds[index+1];
-                        positions[index+2] += speeds[index+2];
-                    } else {
-                        positions[index] = THREE.MathUtils.lerp(positions[index], homes[index], 1 - structuralIntegrity || 0.1);
-                        positions[index+1] = THREE.MathUtils.lerp(positions[index+1], homes[index+1], 1 - structuralIntegrity || 0.1);
-                        positions[index+2] = THREE.MathUtils.lerp(positions[index+2], homes[index+2], 1 - structuralIntegrity || 0.1);
-                    }
-                }
-                particleGeometry.attributes.position.needsUpdate = true;
-            }
-
-            controls.update();
-            renderer.render(scene, camera);
-        }
-
-        function handleViewportResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        function setupMouseDragBackup() {
+        function setupPanelDragging() {
+            const panel = document.getElementById('control-panel');
+            const handle = document.getElementById('panel-drag-handle');
+            
             let isDragging = false;
-            let offset = { x: 0, y: 0 };
-            const hub = document.getElementById('control-hub');
+            let startX, startY, initialLeft, initialTop;
 
-            hub.addEventListener('mousedown', (e) => {
-                if (e.target.closest('button')) return;
+            handle.addEventListener('mousedown', (e) => {
                 isDragging = true;
-                offset.x = e.clientX - panelCoordinates.x;
-                offset.y = e.clientY - panelCoordinates.y;
+                const rect = panel.getBoundingClientRect();
+                initialLeft = rect.left;
+                initialTop = rect.top;
+                
+                startX = e.clientX;
+                startY = e.clientY;
+
+                panel.style.bottom = 'auto';
+                panel.style.right = 'auto';
+                panel.style.left = `${initialLeft}px`;
+                panel.style.top = `${initialTop}px`;
             });
 
             window.addEventListener('mousemove', (e) => {
                 if (!isDragging) return;
-                panelCoordinates.x = e.clientX - offset.x;
-                panelCoordinates.y = e.clientY - offset.y;
-                gsap.set(hub, { left: panelCoordinates.x, top: panelCoordinates.y });
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                panel.style.left = `${initialLeft + dx}px`;
+                panel.style.top = `${initialTop + dy}px`;
             });
 
             window.addEventListener('mouseup', () => { isDragging = false; });
         }
 
-        function activateHologramSystem() {
-            gsap.to('#loader-shield', { opacity: 0, duration: 0.4, onComplete: () => {
-                document.getElementById('loader-shield').style.display = 'none';
-                initCoreScene();
-                initTrackingPipeline();
-                requestAnimationFrame(engineLoop);
-            }});
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
         }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        initThreeJS();
+        initTracking();
+        animate();
     </script>
 </body>
 </html>
