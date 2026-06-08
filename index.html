@@ -67,12 +67,15 @@
         }
         /* Hide default video element out of viewport */
         #webcam {
-            transform: scaleX(-1);
-            visibility: hidden;
-            width: 0;
-            height: 0;
-            position: absolute;
-        }
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover; /* Forces the camera to fill the screen nicely without stretching */
+    transform: scaleX(-1); /* Keeps it mirrored so left feels like left */
+    z-index: -10; /* Sends it directly behind the 3D graphics and UI panels */
+}
+
     </style>
 </head>
 <body class="w-screen h-screen relative m-0 p-0 select-none">
@@ -100,13 +103,6 @@
         </div>
     </header>
 
-    <div class="absolute bottom-6 left-6 z-20 cyber-panel p-2 rounded w-48 overflow-hidden">
-        <div class="text-[10px] tracking-widest text-white/50 mb-1.5 uppercase pl-1">HUD tracking array</div>
-        <div class="relative w-full aspect-video bg-black/40 rounded overflow-hidden border border-white/10">
-            <video id="webcam" autoplay playsinline></video>
-            <canvas id="hud-overlay" class="absolute inset-0 w-full h-full object-cover"></canvas>
-        </div>
-    </div>
 
     <div id="hologram-control-panel" class="absolute z-30 cyber-panel p-6 rounded-lg w-64 flex flex-col gap-4 cursor-grab active:cursor-grabbing" style="top: 35%; left: 10%;">
         <div class="flex items-center justify-between border-b border-cyan-400/20 pb-2">
@@ -164,16 +160,16 @@
             const container = document.getElementById('canvas-container');
             
             scene = new THREE.Scene();
-            scene.fog = new THREE.FogExp2(0x09090b, 0.015);
 
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
             camera.position.set(0, 0, 8);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            renderer.setClearColor(0x09090b, 1.0);
-            container.appendChild(renderer.domElement);
+            // CHANGE THESE RENDERER SETTINGS:
+renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); // 1. Change alpha to TRUE
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x000000, 0); // 2. Set opacity clear color to 0 (Fully transparent)
+container.appendChild(renderer.domElement);
 
             // Controls setup
             controls = new THREE.OrbitControls(camera, renderer.domElement);
