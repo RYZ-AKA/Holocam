@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced AR Viewfinder Hub</title>
+    <title>Advanced AR Viewfinder - Full Control</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
@@ -68,6 +68,7 @@
             backdrop-filter: blur(8px);
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            transition: color 0.3s ease;
         }
 
         /* Center Camera Viewfinder Ring */
@@ -103,7 +104,6 @@
             user-select: none;
         }
 
-        /* Drag Handle Header */
         .panel-header {
             color: rgba(255, 255, 255, 0.6);
             font-size: 10px;
@@ -149,20 +149,18 @@
 
     <div id="ui-overlay">
         <div id="status-badge">System Initializing...</div>
-        
         <div id="center-reticle"></div>
 
         <div id="control-panel">
             <div class="panel-header" id="panel-drag-handle">:: SHAPE MATRIX</div>
             <button class="shape-btn" onclick="switchGeometry('cube')">Box Mesh</button>
             <button class="shape-btn" onclick="switchGeometry('sphere')">Sphere Mesh</button>
-            <button class="shape-btn" onclick="switchGeometry('torus')">Torus Ring</button>
+            <button class="shape-btn" onclick="switchGeometry('torus')"> Ring</button>
         </div>
     </div>
 
     <script>
         let scene, camera, renderer, controls, activeMesh;
-        let currentShapeType = 'cube';
         const videoElement = document.getElementById('webcam');
         const statusBadge = document.getElementById('status-badge');
 
@@ -184,23 +182,27 @@
             controls.dampingFactor = 0.05;
 
             switchGeometry('cube');
-
             window.addEventListener('resize', onWindowResize);
             setupPanelDragging();
         }
 
         function switchGeometry(type) {
-            currentShapeType = type;
-            if (activeMesh) scene.remove(activeMesh);
+            // Save current position, rotation, and scale if replacing an existing mesh
+            let oldPos = new THREE.Vector3(0,0,0);
+            let oldRot = new THREE.Euler(0,0,0);
+            let oldScale = new THREE.Vector3(1,1,1);
+
+            if (activeMesh) {
+                oldPos.copy(activeMesh.position);
+                oldRot.copy(activeMesh.rotation);
+                oldScale.copy(activeMesh.scale);
+                scene.remove(activeMesh);
+            }
 
             let geometry;
-            if (type === 'cube') {
-                geometry = new THREE.BoxGeometry(1.2, 1.2, 1.2);
-            } else if (type === 'sphere') {
-                geometry = new THREE.SphereGeometry(0.8, 16, 16);
-            } else if (type === 'torus') {
-                geometry = new THREE.TorusGeometry(0.6, 0.2, 8, 24);
-            }
+            if (type === 'cube') geometry = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+            else if (type === 'sphere') geometry = new THREE.SphereGeometry(0.8, 16, 16);
+            else if (type === 'torus') geometry = new THREE.TorusGeometry(0.6, 0.2, 8, 24);
 
             const material = new THREE.MeshBasicMaterial({
                 color: 0x00f5d4, 
@@ -210,6 +212,12 @@
             });
 
             activeMesh = new THREE.Mesh(geometry, material);
+            
+            // Restore previous transformations so the shape doesn't jump when swapped
+            activeMesh.position.copy(oldPos);
+            activeMesh.rotation.copy(oldRot);
+            activeMesh.scale.copy(oldScale);
+            
             scene.add(activeMesh);
         }
 
@@ -241,60 +249,63 @@
                 const trackedHands = results.multiHandLandmarks || [];
 
                 if (trackedHands.length > 0) {
-                    controls.enabled = false; // Disable OrbitControls during hand manipulation
+                    controls.enabled = false; 
 
                     if (trackedHands.length === 1) {
-                        statusBadge.innerText = "1 Hand: Position & 3D Rotation Locked";
-                        
                         const hand = trackedHands[0];
                         
-                        // Center Anchor Tracking Point Calculation
-                        const centerX = (hand[0].x + hand[5].x + hand[17].x) / 3;
-                        const centerY = (hand[0].y + hand[5].y + hand[17].y) / 3;
-                        const worldPos = calculateWorldPos(centerX, centerY);
-                        activeMesh.position.lerp(worldPos, 0.25);
+                        // Calculate Pinch Distance (Thumb Tip [4] to Index Tip [8])
+                        const thumb = hand[4];
+                        const index = hand[8];
+                        const pinchDist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
 
-                        // Complete 3D Orientation Mapping Rules
-                        const rollAngle = Math.atan2(hand[17].y - hand[5].y, hand[17].x - hand[5].x);
-                        const yawAngle = (hand[9].x - hand[0].x) * 2.5;
-                        const pitchAngle = (hand[9].y - hand[0].y) * 2.5;
+                        // If pinched, GRAB AND MOVE the object (Change Position)
+                        if (pinchDist < 0.05) {
+                            statusBadge.innerText = "1 Hand: Grabbing (Positioning)";
+                            statusBadge.style.color = "#00f5d4"; // Highlight active grab
+                            
+                            const pinchCenterX = (thumb.x + index.x) / 2;
+                            const pinchCenterY = (thumb.y + index.y) / 2;
+                            const worldPos = calculateWorldPos(pinchCenterX, pinchCenterY);
+                            
+                            // Move the mesh to where the hand is dragging it
+                            activeMesh.position.lerp(worldPos, 0.3);
+                        } 
+                        // If hand is open, ROTATE the object in place
+                        else {
+                            statusBadge.innerText = "1 Hand: Rotating (Position Locked)";
+                            statusBadge.style.color = "#ffffff";
+                            
+                            const rollAngle = Math.atan2(hand[17].y - hand[5].y, hand[17].x - hand[5].x);
+                            const yawAngle = (hand[9].x - hand[0].x) * 2.5;
+                            const pitchAngle = (hand[9].y - hand[0].y) * 2.5;
 
-                        activeMesh.rotation.z = THREE.MathUtils.lerp(activeMesh.rotation.z, rollAngle, 0.15);
-                        activeMesh.rotation.y = THREE.MathUtils.lerp(activeMesh.rotation.y, yawAngle, 0.15);
-                        activeMesh.rotation.x = THREE.MathUtils.lerp(activeMesh.rotation.x, pitchAngle, 0.15);
+                            activeMesh.rotation.z = THREE.MathUtils.lerp(activeMesh.rotation.z, rollAngle, 0.15);
+                            activeMesh.rotation.y = THREE.MathUtils.lerp(activeMesh.rotation.y, yawAngle, 0.15);
+                            activeMesh.rotation.x = THREE.MathUtils.lerp(activeMesh.rotation.x, pitchAngle, 0.15);
+                        }
 
                     } else if (trackedHands.length === 2) {
-                        statusBadge.innerText = "2 Hands: Resizing Width / Height / Length";
+                        statusBadge.innerText = "2 Hands: Resizing Dimensions";
+                        statusBadge.style.color = "#ffffff";
 
                         const hand1 = trackedHands[0];
                         const hand2 = trackedHands[1];
 
-                        // Midpoint tracking for placement stability between both points
-                        const midX = (hand1[9].x + hand2[9].x) / 2;
-                        const midY = (hand1[9].y + hand2[9].y) / 2;
-                        const targetMidpoint = calculateWorldPos(midX, midY);
-                        activeMesh.position.lerp(targetMidpoint, 0.25);
-
-                        // Individual dimensional difference tracking calculation vectors
                         const deltaWidth = Math.abs(hand1[9].x - hand2[9].x) * 4.5;
                         const deltaHeight = Math.abs(hand1[9].y - hand2[9].y) * 4.5;
-                        const deltaLength = Math.abs(hand1[9].z - hand2[9].z) * 12 + 0.3; // Depth telemetry estimation
+                        const deltaLength = Math.abs(hand1[9].z - hand2[9].z) * 12 + 0.3;
 
-                        // Apply independent dynamic scaling limitations safely
                         activeMesh.scale.x = THREE.MathUtils.lerp(activeMesh.scale.x, THREE.MathUtils.clamp(deltaWidth, 0.2, 5.0), 0.2);
                         activeMesh.scale.y = THREE.MathUtils.lerp(activeMesh.scale.y, THREE.MathUtils.clamp(deltaHeight, 0.2, 5.0), 0.2);
                         activeMesh.scale.z = THREE.MathUtils.lerp(activeMesh.scale.z, THREE.MathUtils.clamp(deltaLength, 0.2, 5.0), 0.2);
                     }
                 } else {
-                    // Reset pipeline parameters and return environment state back to OrbitControls
                     controls.enabled = true;
                     statusBadge.innerText = "No hand detected";
-                    
-                    // Smoothly reset back to uniform scale defaults when hands leave frame
-                    activeMesh.scale.lerp(new THREE.Vector3(1, 1, 1), 0.05);
+                    statusBadge.style.color = "#ffffff";
                 }
             });
-
             const cameraDevice = new Camera(videoElement, {
                 onFrame: async () => {
                     await hands.send({ image: videoElement });
@@ -305,6 +316,7 @@
             cameraDevice.start();
         }
 
+        // Draggable Panel Logic
         function setupPanelDragging() {
             const panel = document.getElementById('control-panel');
             const handle = document.getElementById('panel-drag-handle');
