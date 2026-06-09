@@ -3,368 +3,468 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced AR Viewfinder - Full Control</title>
+    <title>Holographic Interface</title>
     
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     
-    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
 
     <style>
+        :root {
+            --neon-cyan: #00e5ff;
+            --bg-dark: #0a0a0f;
+            --glass-bg: rgba(10, 10, 15, 0.4);
+            --glass-border: rgba(0, 229, 255, 0.3);
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-        }
-        body, html {
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background-color: #000;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            user-select: none;
+            font-family: 'Courier New', Courier, monospace;
         }
 
-        /* Fullscreen Viewfinder Camera Background */
-        #webcam {
-            position: fixed;
-            inset: 0;
+        body {
+            background-color: var(--bg-dark);
+            overflow: hidden;
+            color: white;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Video and Canvases */
+        #webcam, #mediapipe-canvas, #three-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100vw;
             height: 100vh;
             object-fit: cover;
-            transform: scaleX(-1); 
-            z-index: 1;
+            transform: scaleX(-1); /* Mirror view */
         }
 
-        /* Transparent 3D Overlay Layer */
-        #canvas-container {
-            position: fixed;
-            inset: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 2;
+        #mediapipe-canvas { z-index: 10; pointer-events: none; }
+        #three-canvas { z-index: 20; pointer-events: none; }
+
+        /* Glassmorphism utility */
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 0 15px rgba(0, 229, 255, 0.1);
+            border-radius: 12px;
         }
 
-        /* UI Overlay Layer */
-        #ui-overlay {
-            position: fixed;
-            inset: 0;
-            z-index: 3;
-            pointer-events: none;
-        }
-
-        /* Top Left Status Badge */
-        #status-badge {
+        /* Top Left Stats Card */
+        #stats-card {
             position: absolute;
             top: 20px;
             left: 20px;
-            background-color: rgba(0, 0, 0, 0.8);
-            color: #ffffff;
-            padding: 8px 14px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 500;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            backdrop-filter: blur(8px);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            transition: color 0.3s ease;
-        }
-
-        /* Center Camera Viewfinder Ring */
-        #center-reticle {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 65px;
-            height: 65px;
-            border: 2px solid rgba(255, 255, 255, 0.5);
-            background-color: rgba(255, 255, 255, 0.15);
-            border-radius: 50%;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
-        }
-
-        /* Sleek Movable Control Panel */
-        #control-panel {
-            position: absolute;
-            bottom: 30px;
-            right: 30px;
-            width: 170px;
-            background-color: rgba(0, 0, 0, 0.85);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 12px;
-            padding: 14px;
+            padding: 15px 20px;
+            z-index: 30;
             display: flex;
             flex-direction: column;
-            gap: 10px;
-            backdrop-filter: blur(10px);
-            pointer-events: auto; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            user-select: none;
+            gap: 5px;
+            text-shadow: 0 0 5px var(--neon-cyan);
+            transition: opacity 0.3s ease;
         }
 
-        .panel-header {
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            text-align: center;
-            padding-bottom: 6px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            cursor: grab;
-        }
-        
-        .panel-header:active {
-            cursor: grabbing;
+        #hand-count { font-size: 1.2rem; font-weight: bold; color: var(--neon-cyan); }
+        #fps-counter { font-size: 0.9rem; opacity: 0.8; }
+
+        /* Draggable Control Panel */
+        #control-panel {
+            position: absolute;
+            top: 50%;
+            left: 80%;
+            transform: translate(-50%, -50%);
+            width: 220px;
+            height: 220px;
+            z-index: 30;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            box-shadow: 0 0 20px rgba(0, 229, 255, 0.15), inset 0 0 15px rgba(0, 229, 255, 0.05);
         }
 
-        .shape-btn {
-            background-color: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            color: #ffffff;
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 500;
+        .holo-btn {
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            color: white;
+            padding: 12px 30px;
+            font-size: 1rem;
+            letter-spacing: 2px;
+            border-radius: 4px;
             cursor: pointer;
             transition: all 0.2s ease;
-            width: 100%;
-            text-align: center;
+            position: relative;
+            overflow: hidden;
+            width: 80%;
         }
 
-        .shape-btn:hover {
-            background-color: rgba(0, 245, 212, 0.2);
-            border-color: #00f5d4;
-            color: #00f5d4;
+        .holo-btn:hover, .holo-btn.active {
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 10px var(--neon-cyan), inset 0 0 10px rgba(0, 229, 255, 0.3);
+            text-shadow: 0 0 5px var(--neon-cyan);
+        }
+
+        /* Loading Screen */
+        #loading {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg-dark);
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--neon-cyan);
+            font-size: 1.5rem;
+            letter-spacing: 5px;
+            text-shadow: 0 0 10px var(--neon-cyan);
         }
     </style>
 </head>
 <body>
 
+    <div id="loading">INITIALIZING SYSTEMS...</div>
+
     <video id="webcam" autoplay playsinline></video>
+    <canvas id="mediapipe-canvas"></canvas>
+    <canvas id="three-canvas"></canvas>
 
-    <div id="canvas-container"></div>
-
-    <div id="ui-overlay">
-        <div id="status-badge">System Initializing...</div>
-        <div id="center-reticle"></div>
-
-        <div id="control-panel">
-            <div class="panel-header" id="panel-drag-handle">:: SHAPE MATRIX</div>
-            <button class="shape-btn" onclick="switchGeometry('cube')">Box Mesh</button>
-            <button class="shape-btn" onclick="switchGeometry('sphere')">Sphere Mesh</button>
-            <button class="shape-btn" onclick="switchGeometry('torus')"> Ring</button>
-        </div>
+    <div id="stats-card" class="glass">
+        <div id="hand-count">0 HANDS DETECTED</div>
+        <div id="fps-counter">FPS: 0</div>
     </div>
 
-    <script>
-        let scene, camera, renderer, controls, activeMesh;
-        const videoElement = document.getElementById('webcam');
-        const statusBadge = document.getElementById('status-badge');
+    <div id="control-panel" class="glass">
+        <button class="holo-btn active" id="btn-cube">□ CUBE</button>
+        <button class="holo-btn" id="btn-sphere">○ SPHERE</button>
+    </div>
 
-        function initThreeJS() {
-            const container = document.getElementById('canvas-container');
-            scene = new THREE.Scene();
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { HandLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.js";
 
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.set(0, 0, 7);
+        // DOM Elements
+        const video = document.getElementById('webcam');
+        const mpCanvas = document.getElementById('mediapipe-canvas');
+        const mpCtx = mpCanvas.getContext('2d');
+        const threeCanvas = document.getElementById('three-canvas');
+        const handCountEl = document.getElementById('hand-count');
+        const fpsEl = document.getElementById('fps-counter');
+        const controlPanel = document.getElementById('control-panel');
+        const loading = document.getElementById('loading');
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            renderer.setClearColor(0x000000, 0); 
-            container.appendChild(renderer.domElement);
+        // State Variables
+        let handLandmarker = null;
+        let lastVideoTime = -1;
+        let activeShape = 'cube';
+        let isExploded = false;
+        let isPanelDragged = false;
+        let isObjectGrabbed = false;
+        let panelOffset = { x: 0, y: 0 };
+        
+        let fpsStats = { frames: 0, lastTime: performance.now() };
 
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
+        // --- THREE.JS SETUP ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.z = 10;
 
-            switchGeometry('cube');
-            window.addEventListener('resize', onWindowResize);
-            setupPanelDragging();
-        }
+        const renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: true, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
 
-        function switchGeometry(type) {
-            // Save current position, rotation, and scale if replacing an existing mesh
-            let oldPos = new THREE.Vector3(0,0,0);
-            let oldRot = new THREE.Euler(0,0,0);
-            let oldScale = new THREE.Vector3(1,1,1);
+        // Bloom Effect
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        bloomPass.threshold = 0;
+        bloomPass.strength = 1.2; // Neon glow strength
+        bloomPass.radius = 0.5;
 
-            if (activeMesh) {
-                oldPos.copy(activeMesh.position);
-                oldRot.copy(activeMesh.rotation);
-                oldScale.copy(activeMesh.scale);
-                scene.remove(activeMesh);
-            }
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        // 3D Object Management (Particle based for explosion)
+        let holoObject;
+        let originalPositions, randomPositions;
+        let animProgress = { value: 0 };
+
+        function createObject(type) {
+            if (holoObject) scene.remove(holoObject);
 
             let geometry;
-            if (type === 'cube') geometry = new THREE.BoxGeometry(1.2, 1.2, 1.2);
-            else if (type === 'sphere') geometry = new THREE.SphereGeometry(0.8, 16, 16);
-            else if (type === 'torus') geometry = new THREE.TorusGeometry(0.6, 0.2, 8, 24);
+            if (type === 'cube') {
+                geometry = new THREE.BoxGeometry(3, 3, 3, 8, 8, 8);
+            } else {
+                geometry = new THREE.SphereGeometry(2, 24, 24);
+            }
 
-            const material = new THREE.MeshBasicMaterial({
-                color: 0x00f5d4, 
-                wireframe: true,
+            const material = new THREE.PointsMaterial({
+                color: 0x00e5ff,
+                size: 0.08,
                 transparent: true,
-                opacity: 0.9
+                opacity: 0.9,
+                blending: THREE.AdditiveBlending
             });
 
-            activeMesh = new THREE.Mesh(geometry, material);
-            
-            // Restore previous transformations so the shape doesn't jump when swapped
-            activeMesh.position.copy(oldPos);
-            activeMesh.rotation.copy(oldRot);
-            activeMesh.scale.copy(oldScale);
-            
-            scene.add(activeMesh);
+            holoObject = new THREE.Points(geometry, material);
+            scene.add(holoObject);
+
+            // Store positions for explosion physics
+            const posAttr = geometry.attributes.position;
+            originalPositions = new Float32Array(posAttr.array);
+            randomPositions = new Float32Array(posAttr.array.length);
+
+            for(let i=0; i<randomPositions.length; i+=3) {
+                randomPositions[i] = originalPositions[i] + (Math.random() - 0.5) * 15;
+                randomPositions[i+1] = originalPositions[i+1] + (Math.random() - 0.5) * 15;
+                randomPositions[i+2] = originalPositions[i+2] + (Math.random() - 0.5) * 15;
+            }
+            isExploded = false;
+            animProgress.value = 0;
         }
 
-        // Mathematical conversion from MediaPipe coordinate space to full screen 3D vector space
-        function calculateWorldPos(normalizedX, normalizedY) {
-            const ndcX = (1 - normalizedX) * 2 - 1;
-            const ndcY = -(normalizedY * 2 - 1);
+        createObject('cube');
 
-            const targetVector = new THREE.Vector3(ndcX, ndcY, 0.5);
-            targetVector.unproject(camera);
-            const direction = targetVector.sub(camera.position).normalize();
-            const distance = -camera.position.z / direction.z;
-            return camera.position.clone().add(direction.multiplyScalar(distance));
-        }
+        // UI Button Logic
+        document.getElementById('btn-cube').addEventListener('click', () => {
+            activeShape = 'cube';
+            document.getElementById('btn-cube').classList.add('active');
+            document.getElementById('btn-sphere').classList.remove('active');
+            createObject('cube');
+        });
+        document.getElementById('btn-sphere').addEventListener('click', () => {
+            activeShape = 'sphere';
+            document.getElementById('btn-sphere').classList.add('active');
+            document.getElementById('btn-cube').classList.remove('active');
+            createObject('sphere');
+        });
 
-        function initTracking() {
-            const hands = new Hands({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-            });
-
-            hands.setOptions({
-                maxNumHands: 2,
-                modelComplexity: 1,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
-            });
-
-            hands.onResults((results) => {
-                const trackedHands = results.multiHandLandmarks || [];
-
-                if (trackedHands.length > 0) {
-                    controls.enabled = false; 
-
-                    if (trackedHands.length === 1) {
-                        const hand = trackedHands[0];
-                        
-                        // Calculate Pinch Distance (Thumb Tip [4] to Index Tip [8])
-                        const thumb = hand[4];
-                        const index = hand[8];
-                        const pinchDist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
-
-                        // If pinched, GRAB AND MOVE the object (Change Position)
-                        if (pinchDist < 0.05) {
-                            statusBadge.innerText = "1 Hand: Grabbing (Positioning)";
-                            statusBadge.style.color = "#00f5d4"; // Highlight active grab
-                            
-                            const pinchCenterX = (thumb.x + index.x) / 2;
-                            const pinchCenterY = (thumb.y + index.y) / 2;
-                            const worldPos = calculateWorldPos(pinchCenterX, pinchCenterY);
-                            
-                            // Move the mesh to where the hand is dragging it
-                            activeMesh.position.lerp(worldPos, 0.3);
-                        } 
-                        // If hand is open, ROTATE the object in place
-                        else {
-                            statusBadge.innerText = "1 Hand: Rotating (Position Locked)";
-                            statusBadge.style.color = "#ffffff";
-                            
-                            const rollAngle = Math.atan2(hand[17].y - hand[5].y, hand[17].x - hand[5].x);
-                            const yawAngle = (hand[9].x - hand[0].x) * 2.5;
-                            const pitchAngle = (hand[9].y - hand[0].y) * 2.5;
-
-                            activeMesh.rotation.z = THREE.MathUtils.lerp(activeMesh.rotation.z, rollAngle, 0.15);
-                            activeMesh.rotation.y = THREE.MathUtils.lerp(activeMesh.rotation.y, yawAngle, 0.15);
-                            activeMesh.rotation.x = THREE.MathUtils.lerp(activeMesh.rotation.x, pitchAngle, 0.15);
-                        }
-
-                    } else if (trackedHands.length === 2) {
-                        statusBadge.innerText = "2 Hands: Resizing Dimensions";
-                        statusBadge.style.color = "#ffffff";
-
-                        const hand1 = trackedHands[0];
-                        const hand2 = trackedHands[1];
-
-                        const deltaWidth = Math.abs(hand1[9].x - hand2[9].x) * 4.5;
-                        const deltaHeight = Math.abs(hand1[9].y - hand2[9].y) * 4.5;
-                        const deltaLength = Math.abs(hand1[9].z - hand2[9].z) * 12 + 0.3;
-
-                        activeMesh.scale.x = THREE.MathUtils.lerp(activeMesh.scale.x, THREE.MathUtils.clamp(deltaWidth, 0.2, 5.0), 0.2);
-                        activeMesh.scale.y = THREE.MathUtils.lerp(activeMesh.scale.y, THREE.MathUtils.clamp(deltaHeight, 0.2, 5.0), 0.2);
-                        activeMesh.scale.z = THREE.MathUtils.lerp(activeMesh.scale.z, THREE.MathUtils.clamp(deltaLength, 0.2, 5.0), 0.2);
-                    }
-                } else {
-                    controls.enabled = true;
-                    statusBadge.innerText = "No hand detected";
-                    statusBadge.style.color = "#ffffff";
-                }
-            });
-            const cameraDevice = new Camera(videoElement, {
-                onFrame: async () => {
-                    await hands.send({ image: videoElement });
-                },
-                width: 640,
-                height: 480
-            });
-            cameraDevice.start();
-        }
-
-        // Draggable Panel Logic
-        function setupPanelDragging() {
-            const panel = document.getElementById('control-panel');
-            const handle = document.getElementById('panel-drag-handle');
-            
-            let isDragging = false;
-            let startX, startY, initialLeft, initialTop;
-
-            handle.addEventListener('mousedown', (e) => {
-                isDragging = true;
-                const rect = panel.getBoundingClientRect();
-                initialLeft = rect.left;
-                initialTop = rect.top;
-                
-                startX = e.clientX;
-                startY = e.clientY;
-
-                panel.style.bottom = 'auto';
-                panel.style.right = 'auto';
-                panel.style.left = `${initialLeft}px`;
-                panel.style.top = `${initialTop}px`;
-            });
-
-            window.addEventListener('mousemove', (e) => {
-                if (!isDragging) return;
-                const dx = e.clientX - startX;
-                const dy = e.clientY - startY;
-                panel.style.left = `${initialLeft + dx}px`;
-                panel.style.top = `${initialTop + dy}px`;
-            });
-
-            window.addEventListener('mouseup', () => { isDragging = false; });
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            controls.update();
-            renderer.render(scene, camera);
-        }
-
-        function onWindowResize() {
+        // Resize Handler
+        window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+            mpCanvas.width = window.innerWidth;
+            mpCanvas.height = window.innerHeight;
+        });
+
+        // --- MEDIAPIPE SETUP ---
+        async function initHandTracking() {
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+            handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+                    delegate: "GPU"
+                },
+                runningMode: "VIDEO",
+                numHands: 2
+            });
+
+            // Start Webcam
+            navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } }).then((stream) => {
+                video.srcObject = stream;
+                video.addEventListener("loadeddata", () => {
+                    mpCanvas.width = window.innerWidth;
+                    mpCanvas.height = window.innerHeight;
+                    gsap.to(loading, { opacity: 0, duration: 1, onComplete: () => loading.style.display = 'none' });
+                    renderLoop();
+                });
+            });
         }
 
-        initThreeJS();
-        initTracking();
-        animate();
+        // --- GESTURE & INTERACTION LOGIC ---
+        function getDistance(p1, p2) {
+            return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+        }
+
+        function isPinching(landmarks) {
+            return getDistance(landmarks[4], landmarks[8]) < 0.05; // Thumb tip & Index tip
+        }
+
+        function isFist(landmarks) {
+            // If index tip is closer to wrist than index MCP, it's curled.
+            const indexCurled = getDistance(landmarks[8], landmarks[0]) < getDistance(landmarks[5], landmarks[0]);
+            const middleCurled = getDistance(landmarks[12], landmarks[0]) < getDistance(landmarks[9], landmarks[0]);
+            return indexCurled && middleCurled;
+        }
+
+        function handleGestures(results) {
+            if (!results.landmarks || results.landmarks.length === 0) return;
+
+            const hand1 = results.landmarks[0];
+            const isHand1Pinching = isPinching(hand1);
+            const isHand1Fist = isFist(hand1);
+            
+            // Normalize index tip to screen space (mirrored)
+            const indexScreenX = (1 - hand1[8].x) * window.innerWidth;
+            const indexScreenY = hand1[8].y * window.innerHeight;
+
+            // 1. Control Panel Dragging Logic
+            const panelRect = controlPanel.getBoundingClientRect();
+            const overPanel = (indexScreenX >= panelRect.left && indexScreenX <= panelRect.right &&
+                               indexScreenY >= panelRect.top && indexScreenY <= panelRect.bottom);
+
+            if (isHand1Pinching && overPanel && !isPanelDragged && !isObjectGrabbed) {
+                isPanelDragged = true;
+                panelOffset.x = indexScreenX - panelRect.left - (panelRect.width/2);
+                panelOffset.y = indexScreenY - panelRect.top - (panelRect.height/2);
+            }
+
+            if (isPanelDragged) {
+                if (isHand1Pinching) {
+                    gsap.to(controlPanel, {
+                        left: indexScreenX - panelOffset.x,
+                        top: indexScreenY - panelOffset.y,
+                        duration: 0.1,
+                        ease: "power2.out"
+                    });
+                } else {
+                    isPanelDragged = false;
+                }
+            }
+
+            // 2. 3D Object Grabbing & Movement (If not interacting with UI)
+            if (isHand1Pinching && !isPanelDragged) {
+                isObjectGrabbed = true;
+                // Map normalized coords to 3D scene (Rough mapping)
+                const targetX = ((1 - hand1[8].x) - 0.5) * 20; 
+                const targetY = -(hand1[8].y - 0.5) * 15;
+                
+                gsap.to(holoObject.position, {
+                    x: targetX,
+                    y: targetY,
+                    duration: 0.2,
+                    ease: "power1.out"
+                });
+            } else {
+                isObjectGrabbed = false;
+            }
+
+            // 3. Object Rotation (Map hand orientation)
+            if (!isObjectGrabbed && !isExploded) {
+                const pitch = (hand1[9].y - hand1[0].y) * Math.PI;
+                const yaw = (hand1[9].x - hand1[0].x) * Math.PI;
+                gsap.to(holoObject.rotation, {
+                    x: pitch,
+                    y: -yaw,
+                    duration: 0.5
+                });
+            }
+
+            // 4. Explosion / Reconstruction
+            if (isHand1Fist && !isExploded) {
+                isExploded = true;
+                gsap.to(animProgress, {
+                    value: 1, duration: 1.2, ease: "expo.out",
+                    onUpdate: updateParticles
+                });
+            } else if (!isHand1Fist && isExploded) {
+                isExploded = false;
+                gsap.to(animProgress, {
+                    value: 0, duration: 1.2, ease: "power3.inOut",
+                    onUpdate: updateParticles
+                });
+            }
+
+            // 5. Two Hands Scale
+            if (results.landmarks.length > 1) {
+                const hand2 = results.landmarks[1];
+                const handsDist = getDistance(hand1[0], hand2[0]);
+                // Map distance (0.1 to 0.6) to scale (0.5 to 3)
+                let scale = THREE.MathUtils.clamp(handsDist * 5, 0.5, 3);
+                gsap.to(holoObject.scale, { x: scale, y: scale, z: scale, duration: 0.2 });
+            }
+        }
+
+        function updateParticles() {
+            if(!holoObject) return;
+            const positions = holoObject.geometry.attributes.position.array;
+            for(let i = 0; i < positions.length; i++) {
+                positions[i] = THREE.MathUtils.lerp(originalPositions[i], randomPositions[i], animProgress.value);
+            }
+            holoObject.geometry.attributes.position.needsUpdate = true;
+        }
+
+        // --- MAIN RENDER LOOP ---
+        const drawingUtils = new DrawingUtils(mpCtx);
+
+        function renderLoop() {
+            // Calculate FPS
+            const now = performance.now();
+            fpsStats.frames++;
+            if (now >= fpsStats.lastTime + 1000) {
+                fpsEl.innerText = `FPS: ${fpsStats.frames}`;
+                fpsStats.frames = 0;
+                fpsStats.lastTime = now;
+            }
+
+            // MediaPipe Prediction
+            let results = null;
+            if (video.currentTime !== lastVideoTime) {
+                lastVideoTime = video.currentTime;
+                results = handLandmarker.detectForVideo(video, now);
+            }
+
+            // Clear 2D Canvas
+            mpCtx.clearRect(0, 0, mpCanvas.width, mpCanvas.height);
+
+            if (results && results.landmarks) {
+                // Update UI Hand count with fade
+                const countText = results.landmarks.length === 1 ? "1 HAND DETECTED" : 
+                                 (results.landmarks.length === 2 ? "2 HANDS DETECTED" : "0 HANDS DETECTED");
+                
+                if(handCountEl.innerText !== countText) {
+                    gsap.fromTo(handCountEl, {opacity: 0}, {opacity: 1, duration: 0.3});
+                    handCountEl.innerText = countText;
+                }
+
+                // Draw Cyan Holographic Skeleton
+                for (const landmarks of results.landmarks) {
+                    drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, {
+                        color: "#00e5ff", lineWidth: 2
+                    });
+                    drawingUtils.drawLandmarks(landmarks, {
+                        color: "white", fillColor: "#00e5ff", lineWidth: 1, radius: 3
+                    });
+                }
+
+                handleGestures(results);
+            }
+
+            // Idle Rotation
+            if (holoObject && !isObjectGrabbed && !isExploded && (!results || results.landmarks.length === 0)) {
+                holoObject.rotation.x += 0.002;
+                holoObject.rotation.y += 0.005;
+            }
+
+            // Render 3D Scene with Bloom
+            composer.render();
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        // Initialize Everything
+        initHandTracking();
+
     </script>
 </body>
 </html>
