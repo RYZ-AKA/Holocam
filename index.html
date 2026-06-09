@@ -195,7 +195,7 @@
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            renderer.setClearColor(0x09090b, 1.0);
+            renderer.setClearColor(0x000000, 0);
             container.appendChild(renderer.domElement);
 
             // Controls setup
@@ -405,6 +405,8 @@
         width: 1280,
         height: 720
     });
+    videoElement.addEventListener('loadedmetadata', () => { videoElement.play(); });
+        
     cameraUtils.start();
 }
 
